@@ -11,7 +11,7 @@ import zipfile
 import re       
 import time     
 from streamlit_cropper import st_cropper
-import openpyxl 
+import openpyxl # 🌟 엑셀 원본 서식 제어용 라이브러리
 from openpyxl.styles import Alignment, Border, Side, Font
 
 # --- [네트워크 보안 경고 무시 설정] ---
@@ -31,7 +31,7 @@ if "logged_in" not in st.session_state:
 
 if not st.session_state.logged_in:
     st.title("🔒 중구의회 언론보도 스크랩 시스템")
-    st.info("팀 내부망 전용 시스템입니다. 비밀번호를 입력해 주세요.")
+    st.info("울산 중구의회 정책이들의 전용 시스템입니다. 비밀번호를 입력해 주세요.")
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -76,7 +76,7 @@ def get_committee_by_dept(dept_name):
     return "기타"
 
 # =====================================================================
-# 🚨 [보안] Streamlit 금고(Secrets)에서 API 키를 안전하게 꺼내옵니다.
+# 🚨 [수정 완료] 스트림릿 금고(Secrets)에서 API 키를 안전하게 꺼내옵니다! 
 API_KEY = st.secrets["API_KEY"]
 # =====================================================================
 
