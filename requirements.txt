@@ -1,0 +1,8 @@
+streamlit
+pandas
+PyMuPDF
+Pillow
+requests
+urllib3
+streamlit-cropper
+openpyxl
