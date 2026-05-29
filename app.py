@@ -11,7 +11,7 @@ import zipfile
 import re       
 import time     
 from streamlit_cropper import st_cropper
-import openpyxl # 🌟 엑셀 원본 서식 제어용 라이브러리
+import openpyxl 
 from openpyxl.styles import Alignment, Border, Side, Font
 
 # --- [네트워크 보안 경고 무시 설정] ---
@@ -21,7 +21,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 st.set_page_config(page_title="중구의회 언론보도 스크랩", layout="wide")
 
 # =====================================================================
-# 🔒 [보안 설정] 팀원들과 공유할 웹사이트 접속 비밀번호를 설정하세요!
+# 🔒 [보안 설정] 팀원들과 공유할 웹사이트 접속 비밀번호
 APP_PASSWORD = "2904220" 
 # =====================================================================
 
@@ -31,7 +31,7 @@ if "logged_in" not in st.session_state:
 
 if not st.session_state.logged_in:
     st.title("🔒 중구의회 언론보도 스크랩 시스템")
-    st.info("울산 중구의회 정책이들의 전용 시스템입니다. 비밀번호를 입력해 주세요.")
+    st.info("팀 내부망 전용 시스템입니다. 비밀번호를 입력해 주세요.")
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -39,10 +39,10 @@ if not st.session_state.logged_in:
         if st.button("로그인", use_container_width=True):
             if pwd_input == APP_PASSWORD:
                 st.session_state.logged_in = True
-                st.rerun() # 로그인 성공 시 새로고침하여 메인 화면 진입
+                st.rerun() 
             else:
                 st.error("❌ 비밀번호가 일치하지 않습니다.")
-    st.stop() # 로그인이 안 되면 아래 메인 코드는 실행되지 않음
+    st.stop() 
 
 # --- [상태 초기화 및 사전 데이터] ---
 if 'scraped_data' not in st.session_state: st.session_state.scraped_data = []
@@ -76,8 +76,8 @@ def get_committee_by_dept(dept_name):
     return "기타"
 
 # =====================================================================
-# 🚨 제공해주신 새로운 Gemini API 키 확실하게 적용 🚨
-API_KEY = "AQ.Ab8RN6K8vqw3zIpIRE0eyEhPgSKz8MlBNBv-VdH3wZzbCJqXdA"
+# 🚨 [보안] Streamlit 금고(Secrets)에서 API 키를 안전하게 꺼내옵니다.
+API_KEY = st.secrets["API_KEY"]
 # =====================================================================
 
 def get_best_available_model(api_key):
@@ -192,7 +192,6 @@ if uploaded_file:
                             "contents": [{"parts": [{"text": prompt}, {"inlineData": {"mimeType": "image/png", "data": img_str}}]}]
                         }
                         
-                        # 🌟 429 에러 방어 자동 재시도 로직 유지
                         max_retries = 3
                         retry_delay = 5
                         
@@ -305,7 +304,6 @@ if st.session_state.scraped_data:
         
         excel_output = io.BytesIO()
         
-        # 🌟 기본 테두리 및 정렬 서식 (openpyxl)
         thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
         align_center = Alignment(horizontal='center', vertical='center', wrap_text=True)
         align_left = Alignment(horizontal='left', vertical='center', wrap_text=True)
@@ -400,7 +398,7 @@ if st.session_state.scraped_data:
         st.session_state.newly_added_data = []
         st.session_state.original_excel_bytes = None
         st.session_state.excel_loaded = False
-        st.session_state.logged_in = False # 🌟 누르면 다시 로그인 화면으로 돌아가게 안전장치 마련
+        st.session_state.logged_in = False 
         st.rerun()
 else:
     st.info("아직 저장되거나 불러온 기사가 없습니다.")
