@@ -11,7 +11,7 @@ import zipfile
 import re       
 import time     
 from streamlit_cropper import st_cropper
-import openpyxl # 🌟 엑셀 원본 서식 제어용 라이브러리
+import openpyxl 
 from openpyxl.styles import Alignment, Border, Side, Font
 
 # --- [네트워크 보안 경고 무시 설정] ---
@@ -76,7 +76,7 @@ def get_committee_by_dept(dept_name):
     return "기타"
 
 # =====================================================================
-# 🚨 [수정 완료] 스트림릿 금고(Secrets)에서 API 키를 안전하게 꺼내옵니다! 
+# 🚨 [보안] Streamlit 금고(Secrets)에서 API 키를 안전하게 꺼내옵니다.
 API_KEY = st.secrets["API_KEY"]
 # =====================================================================
 
@@ -230,13 +230,14 @@ if uploaded_file:
                                 st.rerun()
                                 break
                                 
-                            elif response.status_code == 429:
+                            # 🌟 429(할당량 초과), 503(서버 혼잡), 500(내부 에러) 시 모두 자동 대기 후 재시도
+                            elif response.status_code in [429, 503, 500]:
                                 if attempt < max_retries - 1:
-                                    st.warning(f"서버가 혼잡합니다. {retry_delay}초 후 자동으로 재시도합니다... (시도 횟수: {attempt+1}/{max_retries})")
+                                    st.warning(f"서버가 일시적으로 혼잡합니다(코드: {response.status_code}). {retry_delay}초 후 자동으로 재시도합니다... (시도 횟수: {attempt+1}/{max_retries})")
                                     time.sleep(retry_delay)
                                     retry_delay += 5
                                 else:
-                                    st.error("❌ 일일 무료 사용량을 초과했거나 기관망 제한에 걸린 것 같습니다. 잠시 후 다시 시도해 주세요.")
+                                    st.error(f"❌ 구글 서버 응답이 계속 지연되고 있습니다(코드: {response.status_code}). 잠시 후 다시 시도해 주세요.")
                             else:
                                 st.error(f"❌ 분석 실패: {response.status_code}")
                                 break
