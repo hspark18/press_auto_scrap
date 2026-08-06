@@ -149,7 +149,7 @@ if uploaded_file:
     with left_col:
         st.info("✂️ **마우스로 기사 영역을 드래그하여 지정하세요.**")
         # 💡 [핵심 해결책] 실시간 업데이트를 False로 변경하여 과부하 방지
-        cropped_image = st_cropper(image, realtime_update=False, box_color='blue', aspect_ratio=None)
+        cropped_image = st_cropper(image, realtime_update=True, box_color='blue', aspect_ratio=None)
 
     with right_col:
         st.subheader("📝 기사 정보 입력")
