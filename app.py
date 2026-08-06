@@ -293,12 +293,18 @@ st.subheader("📊 스크랩 누적 목록")
 
 if st.session_state.scraped_data:
     df = pd.DataFrame(st.session_state.scraped_data)
+    
+    # 이미지 열이 있으면 제거
     if '이미지' in df.columns:
         df_display = df.drop(columns=['이미지'])
     else:
         df_display = df
         
-    st.dataframe(df_display, use_container_width=True)
+    # 'Unnamed:' 로 시작하는 불필요한 빈 열이 딸려왔다면 깔끔하게 삭제
+    df_display = df_display.loc[:, ~df_display.columns.str.contains('^Unnamed')]
+        
+    # 💡 [핵심 해결책] 화면에 그리기 전 모든 데이터를 문자열(str)로 강제 변환하고, 최신 옵션(width) 적용
+    st.dataframe(df_display.astype(str), width='stretch')
     
     # 💡 [핵심 해결책] 엑셀/ZIP 생성 작업을 즉시 실행하지 않고 버튼으로 분리합니다.
     st.markdown("### 📥 파일 다운로드")
