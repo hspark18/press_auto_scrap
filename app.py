@@ -300,106 +300,91 @@ if st.session_state.scraped_data:
         
     st.dataframe(df_display, use_container_width=True)
     
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        
-        excel_output = io.BytesIO()
-        
-        thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
-        align_center = Alignment(horizontal='center', vertical='center', wrap_text=True)
-        align_left = Alignment(horizontal='left', vertical='center', wrap_text=True)
-        
-        if st.session_state.original_excel_bytes:
-            wb = openpyxl.load_workbook(io.BytesIO(st.session_state.original_excel_bytes))
-            ws = wb.active
+    # 💡 [핵심 해결책] 엑셀/ZIP 생성 작업을 즉시 실행하지 않고 버튼으로 분리합니다.
+    st.markdown("### 📥 파일 다운로드")
+    if st.button("📦 엑셀 및 기사 이미지(ZIP) 파일 생성 준비하기", type="primary"):
+        with st.spinner("압축 파일을 준비하고 있습니다. 잠시만 기다려주세요..."):
             
-            for data in st.session_state.newly_added_data:
-                row_val = [
-                    data.get("연번", ""), data.get("구분", ""), data.get("위원회명", ""),
-                    data.get("언론사", ""), data.get("언론보도일자", ""), data.get("담당부서", ""),
-                    data.get("제목", ""), data.get("주요내용", ""), data.get("비고", "")
-                ]
-                ws.append(row_val)
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+                excel_output = io.BytesIO()
+                thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+                align_center = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                align_left = Alignment(horizontal='left', vertical='center', wrap_text=True)
                 
-                for cell in ws[ws.max_row]:
-                    cell.border = thin_border
-                    if cell.column in [7, 8]:
-                        cell.alignment = align_left
-                    else:
+                # --- (기존의 openpyxl 엑셀 생성 코드 동일하게 삽입) ---
+                if st.session_state.original_excel_bytes:
+                    wb = openpyxl.load_workbook(io.BytesIO(st.session_state.original_excel_bytes))
+                    ws = wb.active
+                    for data in st.session_state.newly_added_data:
+                        row_val = [data.get("연번", ""), data.get("구분", ""), data.get("위원회명", ""), data.get("언론사", ""), data.get("언론보도일자", ""), data.get("담당부서", ""), data.get("제목", ""), data.get("주요내용", ""), data.get("비고", "")]
+                        ws.append(row_val)
+                        for cell in ws[ws.max_row]:
+                            cell.border = thin_border
+                            cell.alignment = align_left if cell.column in [7, 8] else align_center
+                    wb.save(excel_output)
+                else:
+                    wb = openpyxl.Workbook()
+                    ws = wb.active
+                    ws.title = '스크랩목록'
+                    headers = ["연번", "구분", "위원회명", "언론사", "언론보도 일자", "담당부서", "제목", "주요내용", "비고"]
+                    ws.append(headers)
+                    header_font = Font(bold=True)
+                    for cell in ws[1]:
+                        cell.font = header_font
                         cell.alignment = align_center
-
-            wb.save(excel_output)
-        else:
-            wb = openpyxl.Workbook()
-            ws = wb.active
-            ws.title = '스크랩목록'
-            
-            headers = ["연번", "구분", "위원회명", "언론사", "언론보도 일자", "담당부서", "제목", "주요내용", "비고"]
-            ws.append(headers)
-            
-            header_font = Font(bold=True)
-            for cell in ws[1]:
-                cell.font = header_font
-                cell.alignment = align_center
-                cell.border = thin_border
+                        cell.border = thin_border
+                    col_widths = {'A': 12, 'B': 12, 'C': 18, 'D': 12, 'E': 12, 'F': 15, 'G': 40, 'H': 60, 'I': 10}
+                    for col, width in col_widths.items():
+                        ws.column_dimensions[col].width = width
+                    for data in st.session_state.scraped_data: 
+                        row_val = [data.get("연번", ""), data.get("구분", ""), data.get("위원회명", ""), data.get("언론사", ""), data.get("언론보도일자", ""), data.get("담당부서", ""), data.get("제목", ""), data.get("주요내용", ""), data.get("비고", "")]
+                        ws.append(row_val)
+                        for cell in ws[ws.max_row]:
+                            cell.border = thin_border
+                            cell.alignment = align_left if cell.column in [7, 8] else align_center
+                    wb.save(excel_output)
                 
-            col_widths = {'A': 12, 'B': 12, 'C': 18, 'D': 12, 'E': 12, 'F': 15, 'G': 40, 'H': 60, 'I': 10}
-            for col, width in col_widths.items():
-                ws.column_dimensions[col].width = width
+                # --- (기존의 파일 이름 설정 및 이미지 압축 코드 동일하게 삽입) ---
+                excel_filename = f"2026년 일일 언론보도 스크랩 목록({report_date[2:6]}).xlsx"
+                zf.writestr(excel_filename, excel_output.getvalue())
                 
-            for data in st.session_state.scraped_data: 
-                row_val = [
-                    data.get("연번", ""), data.get("구분", ""), data.get("위원회명", ""),
-                    data.get("언론사", ""), data.get("언론보도일자", ""), data.get("담당부서", ""),
-                    data.get("제목", ""), data.get("주요내용", ""), data.get("비고", "")
-                ]
-                ws.append(row_val)
-                for cell in ws[ws.max_row]:
-                    cell.border = thin_border
-                    if cell.column in [7, 8]:
-                        cell.alignment = align_left
-                    else:
-                        cell.alignment = align_center
+                for data in st.session_state.newly_added_data:
+                    if '이미지' in data and data['이미지'] is not None:
+                        img = data['이미지']
+                        safe_title = re.sub(r'[\\/*?:"<>|]', "", str(data.get('제목', ''))).strip()
+                        img_filename = f"({data.get('담당부서', '')})({data.get('연번', '')}){safe_title}.jpg"
                         
-            wb.save(excel_output)
-        
-        excel_filename = f"2026년 일일 언론보도 스크랩 목록({report_date[2:6]}).xlsx"
-        zf.writestr(excel_filename, excel_output.getvalue())
-        
-        for data in st.session_state.newly_added_data:
-            if '이미지' in data and data['이미지'] is not None:
-                img = data['이미지']
-                safe_title = re.sub(r'[\\/*?:"<>|]', "", str(data.get('제목', ''))).strip()
-                img_filename = f"({data.get('담당부서', '')})({data.get('연번', '')}){safe_title}.jpg"
-                
-                img_byte_arr = io.BytesIO()
-                if img.mode in ("RGBA", "P"): 
-                    img = img.convert("RGB")
-                
-                img.save(img_byte_arr, format='JPEG', quality=95)
-                zf.writestr(img_filename, img_byte_arr.getvalue())
-            
-    zip_filename = ""
-    if len(report_date) == 6:
-        mm = report_date[2:4]
-        dd = report_date[4:6]
-        zip_filename = f"{mm}월{dd}일 주요언론보도.zip"
-    else:
-        zip_filename = f"{report_date}_주요언론보도.zip" 
+                        img_byte_arr = io.BytesIO()
+                        if img.mode in ("RGBA", "P"): 
+                            img = img.convert("RGB")
+                        
+                        img.save(img_byte_arr, format='JPEG', quality=95)
+                        zf.writestr(img_filename, img_byte_arr.getvalue())
 
-    st.download_button(
-        label="📦 엑셀 및 기사 이미지(ZIP) 일괄 다운로드",
-        data=zip_buffer.getvalue(),
-        file_name=zip_filename,
-        mime="application/zip"
-    )
+            # 완성된 ZIP 파일을 세션 스테이트에 저장합니다.
+            st.session_state.ready_zip = zip_buffer.getvalue()
+            st.success("🎉 파일 생성 완료! 아래 나타난 다운로드 버튼을 클릭하세요.")
+
+    # 파일이 준비되었을 때만 실제 다운로드 버튼을 띄워줍니다.
+    if "ready_zip" in st.session_state:
+        zip_filename = f"{report_date[2:4]}월{report_date[4:6]}일 주요언론보도.zip" if len(report_date) == 6 else f"{report_date}_주요언론보도.zip"
+        st.download_button(
+            label="📥 완성된 ZIP 파일 다운로드",
+            data=st.session_state.ready_zip,
+            file_name=zip_filename,
+            mime="application/zip"
+        )
     
+    st.markdown("---")
     if st.button("🗑️ 목록 완전히 초기화하기 (로그아웃)"):
         st.session_state.scraped_data = []
         st.session_state.newly_added_data = []
         st.session_state.original_excel_bytes = None
         st.session_state.excel_loaded = False
         st.session_state.logged_in = False 
+        if "ready_zip" in st.session_state:
+            del st.session_state.ready_zip
         st.rerun()
 else:
     st.info("아직 저장되거나 불러온 기사가 없습니다.")
