@@ -146,9 +146,10 @@ if uploaded_file:
 
     left_col, right_col = st.columns([1.2, 1])
 
-    with left_col:
+with left_col:
         st.info("✂️ **마우스로 기사 영역을 드래그하여 지정하세요.**")
-        cropped_image = st_cropper(image, realtime_update=True, box_color='blue', aspect_ratio=None)
+        # 💡 [핵심 해결책] 실시간 업데이트를 False로 변경합니다.
+        cropped_image = st_cropper(image, realtime_update=False, box_color='blue', aspect_ratio=None)
 
     with right_col:
         st.subheader("📝 기사 정보 입력")
