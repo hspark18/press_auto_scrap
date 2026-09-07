@@ -80,6 +80,8 @@ def get_committee_by_dept(dept_name):
 API_KEY = st.secrets["API_KEY"]
 # =====================================================================
 
+# 💡 [개선] 1시간 동안 API 호출 결과를 캐싱하여 할당량 낭비 방지
+@st.cache_data(ttl=3600)
 def get_best_available_model(api_key):
     url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
     headers = {'x-goog-api-key': api_key} 
@@ -148,8 +150,8 @@ if uploaded_file:
 
     with left_col:
         st.info("✂️ **마우스로 기사 영역을 드래그하여 지정하세요.**")
-        # 💡 [핵심 해결책] 실시간 업데이트를 False로 변경하여 과부하 방지
-        cropped_image = st_cropper(image, realtime_update=True, box_color='blue', aspect_ratio=None)
+        # 💡 [개선] 실시간 업데이트를 False로 변경하여 드래그 중 과부하 원천 차단
+        cropped_image = st_cropper(image, realtime_update=False, box_color='blue', aspect_ratio=None)
 
     with right_col:
         st.subheader("📝 기사 정보 입력")
@@ -175,7 +177,7 @@ if uploaded_file:
                         3. 예상 담당부서: 반드시 다음 목록 중에서 가장 관련 있는 부서 '1개'의 이름만 정확히 출력하세요. 없으면 빈칸으로 두세요. (목록: {all_dept_list_str})
                         4. 구분: 기사가 다루는 내용을 파악하여 반드시 다음 목록 중 가장 알맞은 '1개'만 정확히 출력하세요. (목록: {all_category_str})
                         5. 주요내용: 기사의 핵심을 중구청 위주로 '반드시 개조식(- 기호 시작)'으로 한 문장씩 3~4줄로 요약하세요. 
-                           ▶ [중요] 각 문장의 끝은 반드시 '~함', '~할 계획임', '~할 예정임', '~개최함' 과 같이 간결한 명사형 종결어미로 끝내세요.
+                            ▶ [중요] 각 문장의 끝은 반드시 '~함', '~할 계획임', '~할 예정임', '~개최함' 과 같이 간결한 명사형 종결어미로 끝내세요.
 
                         출력형식:
                         제목: [제목]
@@ -194,7 +196,8 @@ if uploaded_file:
                         }
                         
                         max_retries = 3
-                        retry_delay = 5
+                        # 💡 [개선] 초기 대기 시간을 15초로 늘려 분당 호출 제한(RPM) 회피
+                        retry_delay = 15
                         
                         for attempt in range(max_retries):
                             response = requests.post(url, headers=headers, json=data, verify=False)
@@ -236,7 +239,8 @@ if uploaded_file:
                                 if attempt < max_retries - 1:
                                     st.warning(f"서버가 일시적으로 혼잡합니다(코드: {response.status_code}). {retry_delay}초 후 자동으로 재시도합니다... (시도 횟수: {attempt+1}/{max_retries})")
                                     time.sleep(retry_delay)
-                                    retry_delay += 5
+                                    # 💡 [개선] 15초 -> 30초로 대기 시간을 점진적으로 증가 (Exponential Backoff)
+                                    retry_delay *= 2
                                 else:
                                     st.error(f"❌ 구글 서버 응답이 계속 지연되고 있습니다(코드: {response.status_code}). 잠시 후 다시 시도해 주세요.")
                             else:
