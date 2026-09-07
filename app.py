@@ -80,6 +80,25 @@ def get_committee_by_dept(dept_name):
 API_KEY = st.secrets["API_KEY"]
 # =====================================================================
 
+# 💡 [핵심 해결책] 회원님 API 키에 맞는 모델을 자동으로 찾되, 1시간에 1번만 실행하여 429 오류 완벽 방지
+@st.cache_data(ttl=3600)
+def get_best_available_model(api_key):
+    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+    headers = {'x-goog-api-key': api_key} 
+    try:
+        res = requests.get(url, headers=headers, verify=False)
+        if res.status_code == 200:
+            models = res.json().get('models', [])
+            valid_models = [m['name'] for m in models if 'generateContent' in m.get('supportedGenerationMethods', [])]
+            if not valid_models: return None, "사용 가능한 모델이 없습니다."
+            
+            # API 키에 따라 가능한 최신/안정화 버전을 순서대로 시도하여 404 에러 방지
+            for target in ["models/gemini-1.5-flash-latest", "models/gemini-1.5-flash", "models/gemini-1.5-pro", "models/gemini-1.0-pro-vision-latest"]:
+                if target in valid_models: return target, "성공"
+            return valid_models[0], "성공"
+        else: return None, f"에러: {res.status_code}"
+    except Exception as e: return None, f"에러: {str(e)}"
+
 # --- [사이드바] ---
 st.sidebar.header("⚙️ 날짜 설정 및 파일 업로드")
 report_date = st.sidebar.text_input("보도일자 (yymmdd)", value=datetime.datetime.now().strftime("%y%m%d"))
@@ -133,7 +152,7 @@ if uploaded_file:
 
     with left_col:
         st.info("✂️ **마우스로 기사 영역을 드래그하여 지정하세요.**")
-        # 💡 [개선] 실시간 업데이트를 False로 변경하여 드래그 중 과부하 원천 차단
+        # 💡 [개선] 실시간 업데이트 False 유지 (드래그 중 새로고침 과부하 원천 차단)
         cropped_image = st_cropper(image, realtime_update=False, box_color='blue', aspect_ratio=None)
 
     with right_col:
@@ -143,8 +162,8 @@ if uploaded_file:
         if st.button("✨ Gemini로 기사 분석하기"):
             with st.spinner("Gemini가 이미지를 분석 중입니다. 서버 혼잡 시 자동으로 대기 후 재시도합니다..."):
                 
-                # 💡 [핵심 해결책] 1분당 15회 호출이 가능한 빠르고 안정적인 Flash 모델 고정 사용
-                best_model = "models/gemini-1.5-flash"
+                # 캐싱된 함수 호출로 안전하게 모델명 획득
+                best_model, status_msg = get_best_available_model(API_KEY)
                 
                 if best_model:
                     try:
@@ -180,7 +199,6 @@ if uploaded_file:
                             "contents": [{"parts": [{"text": prompt}, {"inlineData": {"mimeType": "image/png", "data": img_str}}]}]
                         }
                         
-                        # 💡 [개선] 구글 서버(503) 혼잡을 대비해 최대 4번까지 인내심 있게 시도합니다.
                         max_retries = 4
                         retry_delay = 15
                         
@@ -219,22 +237,20 @@ if uploaded_file:
                                 st.rerun()
                                 break
                                 
-                            # 🌟 429(할당량 초과), 503(서버 혼잡), 500(내부 에러) 시 모두 자동 대기 후 재시도
                             elif response.status_code in [429, 503, 500]:
                                 if attempt < max_retries - 1:
                                     st.warning(f"서버가 일시적으로 혼잡합니다(코드: {response.status_code}). {retry_delay}초 후 자동으로 재시도합니다... (시도 횟수: {attempt+1}/{max_retries})")
                                     time.sleep(retry_delay)
-                                    # 💡 [개선] 15초 -> 30초 -> 60초로 대기 시간을 늘려 확실하게 에러가 풀릴 때까지 대기
-                                    retry_delay *= 2
+                                    retry_delay *= 2  # 15초 -> 30초 -> 60초 대기
                                 else:
                                     st.error(f"❌ 구글 서버 응답이 계속 지연되고 있습니다(코드: {response.status_code}). 잠시 후 다시 시도해 주세요.")
                             else:
-                                st.error(f"❌ 분석 실패: {response.status_code}")
+                                st.error(f"❌ 분석 실패 (코드: {response.status_code})")
                                 break
                                 
-                    except Exception as e: st.error(f"AI 호출 오류: {e}")
+                    except Exception as e: st.error(f"AI 호출 중 시스템 오류 발생: {e}")
                 else:
-                    st.error("❌ 구글 API 연결 실패: 모델을 찾을 수 없습니다.")
+                    st.error(f"❌ 구글 API 연결 실패: 모델을 찾을 수 없습니다. ({status_msg})")
 
         with st.form("article_input_form"):
             title = st.text_input("제목", value=st.session_state.ai_title)
@@ -284,19 +300,14 @@ st.subheader("📊 스크랩 누적 목록")
 if st.session_state.scraped_data:
     df = pd.DataFrame(st.session_state.scraped_data)
     
-    # 이미지 열이 있으면 제거
     if '이미지' in df.columns:
         df_display = df.drop(columns=['이미지'])
     else:
         df_display = df
         
-    # 'Unnamed:' 로 시작하는 불필요한 빈 열이 딸려왔다면 깔끔하게 삭제
     df_display = df_display.loc[:, ~df_display.columns.str.contains('^Unnamed')]
-        
-    # 💡 [핵심 해결책] 화면에 그리기 전 모든 데이터를 문자열(str)로 강제 변환하고, 최신 옵션(width) 적용
     st.dataframe(df_display.astype(str), width='stretch')
     
-    # 💡 [핵심 해결책] 엑셀/ZIP 생성 작업을 즉시 실행하지 않고 버튼으로 분리합니다.
     st.markdown("### 📥 파일 다운로드")
     if st.button("📦 엑셀 및 기사 이미지(ZIP) 파일 생성 준비하기", type="primary"):
         with st.spinner("압축 파일을 준비하고 있습니다. 잠시만 기다려주세요..."):
@@ -308,7 +319,6 @@ if st.session_state.scraped_data:
                 align_center = Alignment(horizontal='center', vertical='center', wrap_text=True)
                 align_left = Alignment(horizontal='left', vertical='center', wrap_text=True)
                 
-                # --- (기존의 openpyxl 엑셀 생성 코드 동일하게 삽입) ---
                 if st.session_state.original_excel_bytes:
                     wb = openpyxl.load_workbook(io.BytesIO(st.session_state.original_excel_bytes))
                     ws = wb.active
@@ -341,7 +351,6 @@ if st.session_state.scraped_data:
                             cell.alignment = align_left if cell.column in [7, 8] else align_center
                     wb.save(excel_output)
                 
-                # --- (기존의 파일 이름 설정 및 이미지 압축 코드 동일하게 삽입) ---
                 excel_filename = f"2026년 일일 언론보도 스크랩 목록({report_date[2:6]}).xlsx"
                 zf.writestr(excel_filename, excel_output.getvalue())
                 
@@ -358,11 +367,9 @@ if st.session_state.scraped_data:
                         img.save(img_byte_arr, format='JPEG', quality=95)
                         zf.writestr(img_filename, img_byte_arr.getvalue())
 
-            # 완성된 ZIP 파일을 세션 스테이트에 저장합니다.
             st.session_state.ready_zip = zip_buffer.getvalue()
             st.success("🎉 파일 생성 완료! 아래 나타난 다운로드 버튼을 클릭하세요.")
 
-    # 파일이 준비되었을 때만 실제 다운로드 버튼을 띄워줍니다.
     if "ready_zip" in st.session_state:
         zip_filename = f"{report_date[2:4]}월{report_date[4:6]}일 주요언론보도.zip" if len(report_date) == 6 else f"{report_date}_주요언론보도.zip"
         st.download_button(
