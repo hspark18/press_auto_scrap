@@ -80,23 +80,6 @@ def get_committee_by_dept(dept_name):
 API_KEY = st.secrets["API_KEY"]
 # =====================================================================
 
-# 💡 [개선] 1시간 동안 API 호출 결과를 캐싱하여 할당량 낭비 방지
-@st.cache_data(ttl=3600)
-def get_best_available_model(api_key):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-    headers = {'x-goog-api-key': api_key} 
-    try:
-        res = requests.get(url, headers=headers, verify=False)
-        if res.status_code == 200:
-            models = res.json().get('models', [])
-            valid_models = [m['name'] for m in models if 'generateContent' in m.get('supportedGenerationMethods', [])]
-            if not valid_models: return None, "사용 가능한 모델이 없습니다."
-            for target in ["models/gemini-1.5-flash", "models/gemini-1.5-pro", "models/gemini-1.0-pro-vision"]:
-                if target in valid_models: return target, "성공"
-            return valid_models[0], "성공"
-        else: return None, f"에러: {res.status_code}"
-    except Exception as e: return None, f"에러: {str(e)}"
-
 # --- [사이드바] ---
 st.sidebar.header("⚙️ 날짜 설정 및 파일 업로드")
 report_date = st.sidebar.text_input("보도일자 (yymmdd)", value=datetime.datetime.now().strftime("%y%m%d"))
@@ -159,7 +142,9 @@ if uploaded_file:
         
         if st.button("✨ Gemini로 기사 분석하기"):
             with st.spinner("Gemini가 이미지를 분석 중입니다. 서버 혼잡 시 자동으로 대기 후 재시도합니다..."):
-                best_model, status_msg = get_best_available_model(API_KEY)
+                
+                # 💡 [핵심 해결책] 1분당 15회 호출이 가능한 빠르고 안정적인 Flash 모델 고정 사용
+                best_model = "models/gemini-1.5-flash"
                 
                 if best_model:
                     try:
@@ -195,8 +180,8 @@ if uploaded_file:
                             "contents": [{"parts": [{"text": prompt}, {"inlineData": {"mimeType": "image/png", "data": img_str}}]}]
                         }
                         
-                        max_retries = 3
-                        # 💡 [개선] 초기 대기 시간을 15초로 늘려 분당 호출 제한(RPM) 회피
+                        # 💡 [개선] 구글 서버(503) 혼잡을 대비해 최대 4번까지 인내심 있게 시도합니다.
+                        max_retries = 4
                         retry_delay = 15
                         
                         for attempt in range(max_retries):
@@ -239,7 +224,7 @@ if uploaded_file:
                                 if attempt < max_retries - 1:
                                     st.warning(f"서버가 일시적으로 혼잡합니다(코드: {response.status_code}). {retry_delay}초 후 자동으로 재시도합니다... (시도 횟수: {attempt+1}/{max_retries})")
                                     time.sleep(retry_delay)
-                                    # 💡 [개선] 15초 -> 30초로 대기 시간을 점진적으로 증가 (Exponential Backoff)
+                                    # 💡 [개선] 15초 -> 30초 -> 60초로 대기 시간을 늘려 확실하게 에러가 풀릴 때까지 대기
                                     retry_delay *= 2
                                 else:
                                     st.error(f"❌ 구글 서버 응답이 계속 지연되고 있습니다(코드: {response.status_code}). 잠시 후 다시 시도해 주세요.")
