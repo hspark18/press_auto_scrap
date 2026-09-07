@@ -76,11 +76,9 @@ def get_committee_by_dept(dept_name):
     return "기타"
 
 # =====================================================================
-# 🚨 [보안] Streamlit 금고(Secrets)에서 API 키를 안전하게 꺼내옵니다.
 API_KEY = st.secrets["API_KEY"]
 # =====================================================================
 
-# 💡 [핵심 해결책] 회원님 API 키에 맞는 모델을 자동으로 찾되, 1시간에 1번만 실행하여 429 오류 완벽 방지
 @st.cache_data(ttl=3600)
 def get_best_available_model(api_key):
     url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
@@ -92,7 +90,6 @@ def get_best_available_model(api_key):
             valid_models = [m['name'] for m in models if 'generateContent' in m.get('supportedGenerationMethods', [])]
             if not valid_models: return None, "사용 가능한 모델이 없습니다."
             
-            # API 키에 따라 가능한 최신/안정화 버전을 순서대로 시도하여 404 에러 방지
             for target in ["models/gemini-1.5-flash-latest", "models/gemini-1.5-flash", "models/gemini-1.5-pro", "models/gemini-1.0-pro-vision-latest"]:
                 if target in valid_models: return target, "성공"
             return valid_models[0], "성공"
@@ -152,17 +149,14 @@ if uploaded_file:
 
     with left_col:
         st.info("✂️ **마우스로 기사 영역을 드래그하여 지정하세요.**")
-        # 💡 [개선] 실시간 업데이트 False 유지 (드래그 중 새로고침 과부하 원천 차단)
-        cropped_image = st_cropper(image, realtime_update=False, box_color='blue', aspect_ratio=None)
+        cropped_image = st_cropper(image, realtime_update=True, box_color='blue', aspect_ratio=None)
 
     with right_col:
         st.subheader("📝 기사 정보 입력")
         st.image(cropped_image, width=300, caption="선택된 기사 미리보기")
         
         if st.button("✨ Gemini로 기사 분석하기"):
-            with st.spinner("Gemini가 이미지를 분석 중입니다. 서버 혼잡 시 자동으로 대기 후 재시도합니다..."):
-                
-                # 캐싱된 함수 호출로 안전하게 모델명 획득
+            with st.spinner("Gemini가 이미지를 분석 중입니다..."):
                 best_model, status_msg = get_best_available_model(API_KEY)
                 
                 if best_model:
@@ -199,8 +193,7 @@ if uploaded_file:
                             "contents": [{"parts": [{"text": prompt}, {"inlineData": {"mimeType": "image/png", "data": img_str}}]}]
                         }
                         
-                        max_retries = 4
-                        retry_delay = 15
+                        max_retries = 3
                         
                         for attempt in range(max_retries):
                             response = requests.post(url, headers=headers, json=data, verify=False)
@@ -237,13 +230,21 @@ if uploaded_file:
                                 st.rerun()
                                 break
                                 
-                            elif response.status_code in [429, 503, 500]:
+                            # 💡 [핵심 조치] 429 에러 발생 시, 구글의 1분 제한이 풀릴 때까지 정확히 60초 대기
+                            elif response.status_code == 429:
                                 if attempt < max_retries - 1:
-                                    st.warning(f"서버가 일시적으로 혼잡합니다(코드: {response.status_code}). {retry_delay}초 후 자동으로 재시도합니다... (시도 횟수: {attempt+1}/{max_retries})")
-                                    time.sleep(retry_delay)
-                                    retry_delay *= 2  # 15초 -> 30초 -> 60초 대기
+                                    st.warning(f"⏳ 구글 API 1분당 무료 사용량을 초과했습니다. 60초 동안 대기한 후 자동으로 재시도합니다... ({attempt+1}/{max_retries})")
+                                    time.sleep(60) # 1분 강제 대기
                                 else:
-                                    st.error(f"❌ 구글 서버 응답이 계속 지연되고 있습니다(코드: {response.status_code}). 잠시 후 다시 시도해 주세요.")
+                                    st.error("❌ 1분 대기 후에도 구글 서버가 응답하지 않습니다. 1~2분 뒤에 다시 시도해 주세요.")
+                            
+                            # 서버 혼잡(503, 500) 시 15초 대기
+                            elif response.status_code in [503, 500]:
+                                if attempt < max_retries - 1:
+                                    st.warning(f"서버가 일시적으로 혼잡합니다(코드: {response.status_code}). 15초 후 재시도합니다... ({attempt+1}/{max_retries})")
+                                    time.sleep(15)
+                                else:
+                                    st.error(f"❌ 구글 서버 응답이 계속 지연되고 있습니다. 잠시 후 다시 시도해 주세요.")
                             else:
                                 st.error(f"❌ 분석 실패 (코드: {response.status_code})")
                                 break
